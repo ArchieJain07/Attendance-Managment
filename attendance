@@ -1,0 +1,113 @@
+import cv2
+import os
+import face_recognition
+from datetime import datetime
+import numpy as np
+import csv
+from datetime import date
+
+
+
+
+
+# Function to capture an unknown user image and save it
+def capture_unknown_user(frame):
+    datemi = time_now.strftime('%Y_%m_%d')
+    timesec = time_now.strftime('%H_%M_%S')
+    folderpath = 'img/unknown'
+    image_path = os.path.join(folderpath, 'unknown_{}_{}.jpg'.format(timesec,datemi))
+    cv2.imwrite(image_path, frame)
+    print('Unknown user image captured and saved successfully:', image_path)
+
+# Load known face encodings and person IDs
+path = 'img'
+images = []
+personid = []
+
+for foldername in os.listdir(path):
+    folderpath = os.path.join(path, foldername)
+    if os.path.isdir(folderpath):
+        for root, dirs, files in os.walk(folderpath):
+            for cu_img in files:
+                img_path = os.path.join(root, cu_img)
+                current_Img = cv2.imread(img_path)
+                images.append(current_Img)
+                personid.append(foldername)
+
+print(personid)
+
+def faceEncodings(images):
+    encodeList=[]
+    for img in images:
+        img=cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        encode=face_recognition.face_encodings(img)[0]
+        encodeList.append(encode)
+    return encodeList
+
+encodeListKnown=faceEncodings(images)
+print("All Encodings Complete")
+
+def attendance(name):
+    attendance_file = 'attendance.csv'
+    #current_date = date.today().strftime('%d/%m/%Y')
+
+    with open('attendance.csv', 'a', newline='') as csv_file:
+            fieldnames = ['id', 'date', 'time']
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            writer.writerow({'id':ID, 'date': newdate, 'time': newtime})
+
+cap=cv2.VideoCapture(0)
+
+
+
+while True:
+    try:
+        time_now = datetime.now()
+        timec = time_now.strftime('%I:%M:%S')
+        ret,frame=cap.read()
+        faces=cv2.resize(frame,(0,0),None,0.25,0.25)
+        faces=cv2.cvtColor(faces,cv2.COLOR_BGR2RGB)
+    
+        facesCurrentFrame=face_recognition.face_locations(faces)
+        encodesCurrentFrame=face_recognition.face_encodings(faces,facesCurrentFrame)
+
+        for encodeFace,faceloc in zip(encodesCurrentFrame,facesCurrentFrame):
+            matches=face_recognition.compare_faces(encodeListKnown,encodeFace)
+            faceDis=face_recognition.face_distance(encodeListKnown,encodeFace)
+
+            matchIndex=np.argmin(faceDis)
+
+            if matches[matchIndex]:
+                    newdate = time_now.strftime('%Y-%m-%d')
+                    newtime = time_now.strftime('%H:%M:%S')
+
+                    ID = personid[matchIndex]
+                    y1, x2, y2, x1 = faceloc
+                    y1, x2, y2, x1 = y1 * 4, x2 * 4, y2 * 4, x1 * 4
+                    cv2.rectangle(frame, (x1 + 4, y1), (x2, y2), (0, 255, 0), 2)
+                    cv2.rectangle(frame, (x1, y2 - 20), (x2, y2), (0, 255, 0), cv2.FILLED)
+
+                    attendance(ID, newdate, newtime)
+
+
+            # Call the attendance function here if needed
+
+            else:
+            # Capture the unknown user image and break the loop
+                capture_unknown_user(frame)
+                print('\n [INFO] Exiting Program and cleaning up stuff')
+                break
+    except Exception as e:
+        continue
+
+    cv2.imshow("Camera", frame)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+        
+
+    
+cap.release()
+cv2.destroyAllWindows()
+
+
