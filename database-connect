@@ -1,0 +1,124 @@
+import mysql.connector
+import csv
+from datetime import datetime
+
+import csv
+from datetime import datetime
+
+def read_csv_data(file_path):
+    data = []
+    with open(file_path, 'r') as csv_file:
+        csv_reader = csv.reader(csv_file)
+        for row in csv_reader:
+            data.append(row)
+    return data
+
+def fetch_check_in_out_times(data):
+    check_in_out_data = []
+    morning_time_str = "12:00:00"  
+    evening_time_str = "17:00:00"  
+
+    morning_time = datetime.strptime(morning_time_str, "%H:%M:%S").time()
+    evening_time = datetime.strptime(evening_time_str, "%H:%M:%S").time()
+
+    i = 0
+    while i < len(data):
+        target_id = data[i][0]
+
+        while i < len(data) and data[i][0] == target_id:
+            person_id = data[i][0]
+            check_in_time = datetime.strptime(data[i][1], "%H:%M:%S").time()
+            check_out_time = datetime.strptime(data[i][1], "%H:%M:%S").time()
+            date = datetime.strptime(data[i][2], "%d/%m/%Y").date()
+
+            # Find the check-out time (next entry with the same ID)
+            while i + 1 < len(data) and data[i+1][0] == target_id:
+                i += 1
+                check_out_time = datetime.strptime(data[i][1], "%H:%M:%S").time()
+
+            time_of_day = "Morning" if morning_time <= check_in_time <= evening_time else "Evening"
+
+            check_in_out_data.append((check_in_time, check_out_time, person_id, date, time_of_day))
+
+            i += 1
+
+    return check_in_out_data
+
+
+
+
+def checkAttendance(person_ids, dates):
+    # Connect to the MySQL database
+    mydb = mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="",
+        database="attendancesystem"
+    )
+    mycursor = mydb.cursor()
+
+    # Prepare the query to fetch attendance data for the given person IDs and dates
+    placeholders = ', '.join(['%s'] * len(person_ids))
+    sql = f"SELECT * FROM attendance WHERE ID IN ({placeholders}) AND Date IN ({placeholders})"
+
+    # Convert dates back to string format ("%d/%m/%Y")
+    date_strs = [date.strftime("%d/%m/%Y") for date in dates]
+    val = person_ids + date_strs
+
+    mycursor.execute(sql, val)
+
+    attendance_data = {}
+    for row in mycursor.fetchall():
+        person_id = row[0]
+        date = row[1].strftime("%d/%m/%Y")  # Convert date back to the desired string format
+        check_in_time = row[2]
+        check_out_time = row[3]
+        time_of_day = row[4]
+
+        attendance_data[(person_id, date)] = (check_in_time, check_out_time, time_of_day)
+
+    # Close the cursor and connection
+    mycursor.close()
+    mydb.close()
+
+    return attendance_data
+
+
+
+if __name__ == "__main__":
+    file_path = "attendance.csv"
+
+    # Fetch check-in and check-out times for all IDs present in the CSV file
+    check_in_out_data = fetch_check_in_out_times(read_csv_data(file_path))
+
+    # Connect to the MySQL database for inserting/updating attendance data
+    mydb = mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="",
+        database="attendancesystem"
+    )
+    mycursor = mydb.cursor()
+
+    for entry in check_in_out_data:
+        check_in_time, check_out_time, person_id, date, time_of_day = entry
+
+        
+
+        if not checkAttendance([person_id], [date]):
+            # Insert a new record if attendance data for this person_id and date doesn't exist
+            sql = "INSERT INTO attendance (ID, Date, check_in, check_out, Type) VALUES (%s, %s, %s, %s, %s)"
+            val = (person_id, date, check_in_time, check_out_time, time_of_day)
+        else:
+            # Update the existing record with check_out and type
+            sql = "UPDATE attendance SET check_out = %s, Type = %s WHERE ID = %s AND Date = %s"
+            val = (check_out_time, time_of_day, person_id, date)
+
+        mycursor.execute(sql, val)
+        mydb.commit()
+
+    # Close the cursor and connection
+    mycursor.close()
+    mydb.close()
+
+    
